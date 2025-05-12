@@ -1,15 +1,10 @@
 import React, { useState, useRef, useEffect } from "react";
 import { io } from "socket.io-client";
-import {
-  FaPhoneSlash,
-  FaVideo,
-  FaStop,
-  FaCopy,
-} from "react-icons/fa";
+import { FaPhoneSlash, FaVideo, FaStop, FaCopy } from "react-icons/fa";
 import html2canvas from "html2canvas";
 
 // const BACKEND_LINK = "https://seismic-backend-04272025-bjbxatgnadguabg9.centralus-01.azurewebsites.net"
-const BACKEND_LINK = "http://localhost:8080"
+const BACKEND_LINK = "http://localhost:8080";
 
 const socket = io(BACKEND_LINK);
 const config = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
@@ -37,7 +32,7 @@ const VideoCallPage = () => {
   const isLoadingUpcoming = useState(false)[0];
   const [isAudioMuted, setIsAudioMuted] = useState(false);
   const [isVideoOff, setIsVideoOff] = useState(false);
- 
+
   // Mock data - replace with your actual data
   const upcomingAppointments = [
     {
@@ -61,10 +56,44 @@ const VideoCallPage = () => {
     null;
   const patient = selectedAppointment
     ? {
-      firstName: selectedAppointment.patientName.split(" ")[0],
-      lastName: selectedAppointment.patientName.split(" ")[1],
-    }
+        firstName: selectedAppointment.patientName.split(" ")[0],
+        lastName: selectedAppointment.patientName.split(" ")[1],
+      }
     : null;
+
+  // Add these new states at the top of the component
+  const [waitingForHost, setWaitingForHost] = useState(false);
+  const [invalidMeetingId, setInvalidMeetingId] = useState(false);
+  const [meetingExpired, setMeetingExpired] = useState(false);
+  const [isDoctorPresent, setIsDoctorPresent] = useState(false);
+  const [appointmentDetails, setAppointmentDetails] = useState(null);
+
+  // Add this helper function
+  const validateAppointmentTime = (appointment) => {
+    const appointmentDateTime = new Date(
+      `${appointment.date}T${appointment.time}`
+    );
+    const now = new Date();
+
+    const canJoinFrom = new Date(appointmentDateTime.getTime() - 15 * 60000);
+    const canJoinUntil = new Date(appointmentDateTime.getTime() + 60 * 60000);
+
+    if (now < canJoinFrom) {
+      alert(
+        "Meeting is not available yet. Please try again at the scheduled time."
+      );
+      setMeetingExpired(true);
+      return false;
+    }
+
+    if (now > canJoinUntil) {
+      alert("This meeting has expired. Please schedule a new appointment.");
+      setMeetingExpired(true);
+      return false;
+    }
+
+    return true;
+  };
 
   // Initialize and handle URL parameters
   useEffect(() => {
@@ -75,6 +104,19 @@ const VideoCallPage = () => {
     if (roomParam) {
       setRoom(roomParam);
       setActiveTab("join");
+      // Find appointment details
+      const appointment = upcomingAppointments.find(
+        (app) => app.appointmentId === roomParam
+      );
+
+      if (appointment) {
+        setAppointmentDetails(appointment);
+        validateAppointmentTime(appointment);
+      } else {
+        setInvalidMeetingId(true);
+      }
+
+      setWaitingForHost(true);
     }
     if (hostParam) {
       setUserName(hostParam);
@@ -83,6 +125,39 @@ const VideoCallPage = () => {
     socket.on("connect", () => {
       console.log("Connected to server:", socket.id);
       setMe(socket.id);
+    });
+
+    socket.on("doctor-joined", () => {
+      setIsDoctorPresent(true);
+      setWaitingForHost(false);
+      console.log("Doctor has joined the meeting");
+    });
+
+    socket.on("doctor-left", () => {
+      setIsDoctorPresent(false);
+      setWaitingForHost(true);
+      console.log("Doctor has left the meeting");
+    });
+
+    socket.on("room-not-found", () => {
+      alert("Meeting room not found. Please check the meeting ID.");
+      setInvalidMeetingId(true);
+    });
+
+    socket.on("waiting-for-doctor", () => {
+      setWaitingForHost(true);
+      setIsDoctorPresent(false);
+    });
+
+    socket.on("doctor-present", () => {
+      setWaitingForHost(false);
+      setIsDoctorPresent(true);
+    });
+
+    socket.on("doctor-joined", ({ name }) => {
+      setUserName(name);
+      setWaitingForHost(false);
+      setIsDoctorPresent(true);
     });
 
     socket.on("user-joined", async ({ id, name }) => {
@@ -172,35 +247,140 @@ const VideoCallPage = () => {
     };
   }, []);
 
-  const joinRoom = async (isJoining = false) => {
-    if (socket.connected) {
-      socket.disconnect();
+  // useEffect(() => {
+  //   if (upcomingAppointments.length > 0) {
+  //     upcomingAppointments.forEach((appointment) => {
+  //       handleAppointmentSelect(appointment.appointmentId);
+  //     });
+  //   }
+  // }, []);
+
+  const handleAppointmentSelect = (selectedAppointmentId) => {
+    const appointment = upcomingAppointments.find(
+      (app) => app.appointmentId === selectedAppointmentId
+    );
+
+    if (!appointment) {
+      setInvalidMeetingId(true);
+      return;
     }
-    socket.connect();
-    if (!room) return alert("Enter room ID");
-    if (!name) return alert("Enter your name");
+
+    setAppointmentId(selectedAppointmentId);
+    const meetingId = selectedAppointmentId; // Use appointment ID as meeting ID
+    setRoom(meetingId);
+    setAppointmentDetails(appointment);
+
+    if (!validateAppointmentTime(appointment)) {
+      return;
+    }
+
+    // Create the room immediately (without joining)
+    socket.emit("create-room", {
+      roomId: meetingId,
+      appointmentDetails: appointment,
+    });
+
+    // For participants joining via link
+    if (new URLSearchParams(window.location.search).get("room")) {
+      joinAsParticipant(meetingId);
+    }
+  };
+
+  const joinAsParticipant = async (roomId) => {
+    if (!name) {
+      alert("Please enter your name");
+      return;
+    }
 
     try {
       const localStream = await navigator.mediaDevices.getUserMedia({
         video: true,
         audio: true,
       });
+
       myVideo.current.srcObject = localStream;
       localStreamRef.current = localStream;
 
-      socket.emit("join-room", { roomId: room, name, isHost: !isJoining });
+      socket.emit("join-as-participant", {
+        roomId,
+        name,
+      });
+
+      setWaitingForHost(true);
       setCallAccepted(true);
-      if (!isJoining) {
+    } catch (error) {
+      console.error("Error accessing media devices:", error);
+      alert("Could not access camera/mic.");
+    }
+  };
+
+  const joinAsDoctor = async (roomId) => {
+    try {
+      const localStream = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: true,
+      });
+
+      myVideo.current.srcObject = localStream;
+      localStreamRef.current = localStream;
+
+      socket.emit("join-as-doctor", {
+        roomId,
+        name: name || "Doctor",
+      });
+
+      setIsDoctorPresent(true);
+      setIsHost(true);
+      generateJoinLink();
+      setCallAccepted(true);
+    } catch (error) {
+      console.error("Error accessing media devices:", error);
+      alert("Could not access camera/mic.");
+    }
+  };
+
+  const joinRoom = async (isJoining = false, isDoctor = false, room, name) => {
+    if (!room || !name) {
+      alert("Meeting ID and your name are required");
+      return;
+    }
+
+    try {
+      const localStream = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: true,
+      });
+
+      myVideo.current.srcObject = localStream;
+      localStreamRef.current = localStream;
+
+      socket.emit("join-room", {
+        roomId: room,
+        name,
+        isDoctor,
+        appointmentId: room,
+      });
+
+      if (isDoctor) {
+        setIsDoctorPresent(true);
         setIsHost(true);
-        generateJoinLink();
+        generateJoinLink(room, name);
+        console.log("Doctor joined the room");
+      } else {
+        setWaitingForHost(true);
+        console.log("User joined, waiting for doctor");
       }
+
+      setCallAccepted(true);
+      setInvalidMeetingId(false);
+      setMeetingExpired(false);
     } catch (error) {
       console.error("Error accessing media devices.", error);
       alert("Could not access camera/mic.");
     }
   };
 
-  const generateJoinLink = () => {
+  const generateJoinLink = (room, name) => {
     const currentUrl = window.location.href.split("?")[0];
     const link = `${currentUrl}?room=${encodeURIComponent(
       room
@@ -438,28 +618,31 @@ const VideoCallPage = () => {
             <div className="inline-flex h-10 items-center justify-center rounded-md bg-gray-100 p-1 text-gray-500 mb-4">
               <button
                 onClick={() => setActiveTab("upcoming")}
-                className={`inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium transition-all ${activeTab === "upcoming"
-                  ? "bg-white text-gray-900 shadow-sm"
-                  : "hover:text-gray-900"
-                  }`}
+                className={`inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium transition-all ${
+                  activeTab === "upcoming"
+                    ? "bg-white text-gray-900 shadow-sm"
+                    : "hover:text-gray-900"
+                }`}
               >
                 Upcoming Calls
               </button>
               <button
                 onClick={() => setActiveTab("join")}
-                className={`inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium transition-all ${activeTab === "join"
-                  ? "bg-white text-gray-900 shadow-sm"
-                  : "hover:text-gray-900"
-                  }`}
+                className={`inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium transition-all ${
+                  activeTab === "join"
+                    ? "bg-white text-gray-900 shadow-sm"
+                    : "hover:text-gray-900"
+                }`}
               >
                 Join by ID
               </button>
               <button
                 onClick={() => setActiveTab("history")}
-                className={`inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium transition-all ${activeTab === "history"
-                  ? "bg-white text-gray-900 shadow-sm"
-                  : "hover:text-gray-900"
-                  }`}
+                className={`inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium transition-all ${
+                  activeTab === "history"
+                    ? "bg-white text-gray-900 shadow-sm"
+                    : "hover:text-gray-900"
+                }`}
               >
                 Call History
               </button>
@@ -477,7 +660,7 @@ const VideoCallPage = () => {
                   <div className="relative">
                     <select
                       value={appointmentId}
-                      onChange={(e) => setAppointmentId(e.target.value)}
+                      onChange={(e) => handleAppointmentSelect(e.target.value)}
                       className="flex h-10 w-full items-center justify-between rounded-md border border-gray-300 bg-white px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       <option value="">Select an appointment</option>
@@ -614,26 +797,15 @@ const VideoCallPage = () => {
                 <div className="flex justify-end space-x-2 mt-4">
                   <button
                     onClick={() => {
-                      setIsHost(true);
-                      joinRoom();
+                      if (!room) {
+                        alert("Please select an appointment first");
+                        return;
+                      }
+                      joinAsDoctor(room);
                     }}
-                    className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors bg-blue-600 hover:bg-blue-700 text-white h-10 px-4 py-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors bg-blue-600 hover:bg-blue-700 text-white h-10 px-4 py-2"
                   >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      width="24"
-                      height="24"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      className="mr-2 h-4 w-4"
-                    >
-                      <path d="M22 8a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2Z"></path>
-                      <path d="m22 8-10 7-10-7"></path>
-                    </svg>
+                    <FaVideo className="mr-2" />
                     Start Video Call
                   </button>
                 </div>
@@ -655,7 +827,7 @@ const VideoCallPage = () => {
                       />
                     </label>
                     <label className="block text-gray-700 mb-2 flex-1">
-                      {isHost ? "Meeting ID" : "Meeting ID (from invite link)"}
+                      Meeting ID (from invite link)
                       <input
                         placeholder="Meeting ID"
                         value={room}
@@ -664,20 +836,12 @@ const VideoCallPage = () => {
                       />
                     </label>
                   </div>
-                  {userName && (
-                    <div className="bg-blue-50 p-3 rounded-lg mb-4">
-                      <p className="text-blue-800">
-                        Joining meeting hosted by: <strong>{userName}</strong>
-                      </p>
-                    </div>
-                  )}
                 </div>
                 <div className="flex justify-end">
                   <button
-                    onClick={() => joinRoom(true)}
+                    onClick={() => joinAsParticipant(room)}
                     disabled={!room || !name}
-                    className={`inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors bg-blue-600 hover:bg-blue-700 text-white h-10 px-4 py-2 disabled:opacity-50 disabled:cursor-not-allowed${!room || !name ? "opacity-50 cursor-not-allowed" : ""
-                      }`}
+                    className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors bg-blue-600 hover:bg-blue-700 text-white h-10 px-4 py-2 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Join Call
                   </button>
@@ -695,6 +859,23 @@ const VideoCallPage = () => {
             )}
           </div>
         </div>
+        {invalidMeetingId && (
+          <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-4">
+            <p>Invalid meeting ID. Please check your meeting link.</p>
+          </div>
+        )}
+
+        {meetingExpired && (
+          <div className="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4 mb-4">
+            <p>This meeting is not available at this time.</p>
+          </div>
+        )}
+
+        {waitingForHost && (
+          <div className="bg-blue-100 border-l-4 border-blue-500 text-blue-700 p-4 mb-4">
+            <p>Waiting for the doctor to join the meeting...</p>
+          </div>
+        )}
         {showShareLink && (
           <div className="mt-6 p-4 bg-gray-100 rounded-lg">
             <h3 className="font-medium text-gray-800 mb-2">
@@ -738,6 +919,18 @@ const VideoCallPage = () => {
         >
           {/* {callAccepted && !callEnded && ( */}
           <div className="relative h-80 bg-gray-200 rounded-lg overflow-hidden flex-2">
+            {waitingForHost && (
+              <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center z-10">
+                <div className="text-center p-4 bg-white bg-opacity-90 rounded-lg">
+                  <p className="text-xl font-medium text-gray-800">
+                    Waiting for Doctor
+                  </p>
+                  <p className="text-gray-600">
+                    The consultation will begin when the doctor joins
+                  </p>
+                </div>
+              </div>
+            )}
             <video
               playsInline
               ref={userVideo}
@@ -762,16 +955,22 @@ const VideoCallPage = () => {
             </p>
             <button
               onClick={toggleMute}
-              className={`px-4 py-2 rounded-lg mr-2 ${isAudioMuted ? "bg-yellow-500 hover:bg-yellow-600" : "bg-blue-500 hover:bg-blue-600"
-                } text-white`}
+              className={`px-4 py-2 rounded-lg mr-2 ${
+                isAudioMuted
+                  ? "bg-yellow-500 hover:bg-yellow-600"
+                  : "bg-blue-500 hover:bg-blue-600"
+              } text-white`}
             >
               {isAudioMuted ? "Unmute" : "Mute"}
             </button>
 
             <button
               onClick={toggleVideo}
-              className={`px-4 py-2 rounded-lg mr-2 ${isVideoOff ? "bg-yellow-500 hover:bg-yellow-600" : "bg-blue-500 hover:bg-blue-600"
-                } text-white`}
+              className={`px-4 py-2 rounded-lg mr-2 ${
+                isVideoOff
+                  ? "bg-yellow-500 hover:bg-yellow-600"
+                  : "bg-blue-500 hover:bg-blue-600"
+              } text-white`}
             >
               {isVideoOff ? "Turn On Video" : "Turn Off Video"}
             </button>
@@ -806,22 +1005,27 @@ const VideoCallPage = () => {
             </button>
             <button
               onClick={toggleMute}
-              className={`px-4 py-2 rounded-lg mr-2 ${isAudioMuted ? "bg-yellow-500 hover:bg-yellow-600" : "bg-blue-500 hover:bg-blue-600"
-                } text-white`}
+              className={`px-4 py-2 rounded-lg mr-2 ${
+                isAudioMuted
+                  ? "bg-yellow-500 hover:bg-yellow-600"
+                  : "bg-blue-500 hover:bg-blue-600"
+              } text-white`}
             >
               {isAudioMuted ? "Unmute" : "Mute"}
             </button>
 
             <button
               onClick={toggleVideo}
-              className={`px-4 py-2 rounded-lg mr-2 ${isVideoOff ? "bg-yellow-500 hover:bg-yellow-600" : "bg-blue-500 hover:bg-blue-600"
-                } text-white`}
+              className={`px-4 py-2 rounded-lg mr-2 ${
+                isVideoOff
+                  ? "bg-yellow-500 hover:bg-yellow-600"
+                  : "bg-blue-500 hover:bg-blue-600"
+              } text-white`}
             >
               {isVideoOff ? "Turn On Video" : "Turn Off Video"}
             </button>
           </div>
         )}
-
 
         {videoBlob && (
           <div className="flex flex-col items-center mt-6">
