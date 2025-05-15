@@ -14,9 +14,12 @@ import NotFound from "./Pages/not-found";
 import VideoRecorder from "./Pages/VideoRecorder";
 
 function Router() {
+  const queryParams = new URLSearchParams(window.location.search);
+  const roomParam = queryParams.get("room");
+
   return (
     <div className="h-screen flex overflow-hidden">
-      <Sidebar />
+      {!roomParam && <Sidebar />}
       <div className="flex-1 flex flex-col overflow-hidden">
         <Header />
         <main className="flex-1 overflow-y-auto bg-neutral-50 p-6">
