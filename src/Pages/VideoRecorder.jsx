@@ -1,8 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { io } from "socket.io-client";
 import { FaPhoneSlash, FaVideo, FaStop, FaCopy } from "react-icons/fa";
-import html2canvas from "html2canvas";
-import Peer from "simple-peer";
+import VideoCore from "../components/VideoCore";
 
 // const BACKEND_LINK = "https://seismic-backend-04272025-bjbxatgnadguabg9.centralus-01.azurewebsites.net"
 const BACKEND_LINK = "http://localhost:8080";
@@ -10,27 +9,16 @@ const BACKEND_LINK = "http://localhost:8080";
 const socket = io(BACKEND_LINK);
 
 const VideoCallPage = () => {
-  const [callAccepted, setCallAccepted] = useState(false);
-  const [callEnded, setCallEnded] = useState(false);
   const [userName, setUserName] = useState("");
-  const [me, setMe] = useState("");
   const [room, setRoom] = useState("");
   const [isHost, setIsHost] = useState(true);
   const [showShareLink, setShowShareLink] = useState(false);
   const [joinLink, setJoinLink] = useState("");
 
-  const myVideo = useRef(null);
-  const userVideo = useRef(null);
-  const peerConnectionRef = useRef(null);
-  const localStreamRef = useRef(null);
-  const chunkIndexRef = useRef(0);
-
   const [activeTab, setActiveTab] = useState("upcoming");
   const [appointmentId, setAppointmentId] = useState("");
   const [appointmentType, setAppointmentType] = useState("online");
   const isLoadingUpcoming = useState(false)[0];
-  const [isAudioMuted, setIsAudioMuted] = useState(false);
-  const [isVideoOff, setIsVideoOff] = useState(false);
 
   // Mock data - replace with your actual data
   const upcomingAppointments = [
@@ -61,7 +49,6 @@ const VideoCallPage = () => {
     : null;
 
   // Add these new states at the top of the component
-  const [waitingForHost, setWaitingForHost] = useState(false);
   const [invalidMeetingId, setInvalidMeetingId] = useState(false);
   const [meetingExpired, setMeetingExpired] = useState(false);
   const [appointmentDetails, setAppointmentDetails] = useState(null);
@@ -113,125 +100,38 @@ const VideoCallPage = () => {
       } else {
         setInvalidMeetingId(true);
       }
-
-      setWaitingForHost(true);
     }
     // if (hostParam) {
     //   setUserName(hostParam);
     // }
   }, []);
 
+  const nickname = "Guest";
+
   const [role, setRole] = useState("");
   const [status, setStatus] = useState("");
-  const [participants, setParticipants] = useState([]);
 
   const createRoom = (roomId) => {
     if (!roomId) return alert("Enter a room ID");
     socket.emit("create-room", { roomId, appointmentDetails: {} });
-    generateJoinLink(roomId);
-  };
 
-  const joinAsDoctor = (roomId, name) => {
-    if (!roomId || !name) return alert("Enter room ID and name");
-    setRole("doctor");
-    socket.emit("join-as-doctor", { roomId, name });
-  };
+    if (!roomId || !nickname) {
+      console.log("Both Room ID and Nickname are required.");
+      return;
+    }
 
-  const joinAsParticipant = (roomId, name) => {
-    setWaitingForHost(true);
-    if (!roomId || !name) return alert("Enter room ID and name");
-    setRole("participant");
-    socket.emit("join-as-participant", { roomId, name });
-  };
+    socket.emit("createRoom", { roomId, nickname });
 
-  const startVideo = async () => {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: true,
-      audio: true,
-    });
-    myVideo.current.srcObject = stream;
-
-    socket.on("offer", ({ sdp, sender }) => {
-      peerConnectionRef.current = new Peer({
-        initiator: false,
-        trickle: false,
-        stream,
-      });
-
-      peerConnectionRef.current.on("signal", (answerSignal) => {
-        socket.emit("answer", { target: sender, sdp: answerSignal });
-      });
-
-      peerConnectionRef.current.on("stream", (remoteStream) => {
-        userVideo.current.srcObject = remoteStream;
-      });
-
-      peerConnectionRef.current.signal(sdp);
+    socket.once("roomCreated", (data) => {
+      console.log("");
+      console.log("Room created:", data.roomId);
+      generateJoinLink(data.roomId);
     });
 
-    socket.on("answer", ({ sdp }) => {
-      peerConnectionRef.current.signal(sdp);
-    });
-
-    socket.on("ice-candidate", ({ candidate }) => {
-      peerConnectionRef.current.signal(candidate);
-    });
-
-    socket.on("user-joined", ({ id }) => {
-      peerConnectionRef.current = new Peer({
-        initiator: true,
-        trickle: false,
-        stream,
-      });
-
-      peerConnectionRef.current.on("signal", (offerSignal) => {
-        socket.emit("offer", { target: id, sdp: offerSignal });
-      });
-
-      peerConnectionRef.current.on("stream", (remoteStream) => {
-        userVideo.current.srcObject = remoteStream;
-      });
+    socket.once("roomExists", () => {
+      console.log("Room already exists. Please choose another Room ID.");
     });
   };
-
-  useEffect(() => {
-    socket.on("room-created", () => setStatus("Room created. Ready to join."));
-    socket.on("room-exists", () => setStatus("Room already exists."));
-    socket.on("room-not-found", () => {
-      setInvalidMeetingId(true);
-      setStatus("Room not found.");
-    });
-    socket.on("waiting-for-doctor", () =>
-      setStatus("Waiting for doctor to join...")
-    );
-    socket.on("doctor-present", ({ doctorName }) => {
-      setWaitingForHost(false);
-      setStatus(`Doctor ${doctorName} is present.`);
-    });
-    socket.on("doctor-joined", ({ name, userName, roomId }) => {
-      setWaitingForHost(false);
-      setStatus(`Doctor ${name} joined. Now Please join the call.`);
-    });
-    socket.on("current-participants", (list) => setParticipants(list));
-    socket.on("user-joined", ({ name }) =>
-      setStatus(`${name} joined as participant.`)
-    );
-    socket.on("doctor-left", () => {
-      setWaitingForHost(true);
-      setStatus("Doctor left the room.");
-    });
-    socket.on("user-left", ({ id }) =>
-      setStatus(`Participant ${id} left the room.`)
-    );
-
-    return () => {
-      socket.off();
-    };
-  }, []);
-
-  useEffect(() => {
-    if (role) startVideo();
-  }, [role]);
 
   const handleAppointmentSelect = (selectedAppointmentId) => {
     const appointment = upcomingAppointments.find(
@@ -268,201 +168,6 @@ const VideoCallPage = () => {
     navigator.clipboard.writeText(joinLink);
     alert("Link copied to clipboard!");
   };
-
-  const leaveCall = () => {
-    peerConnectionRef.current.destroy();
-    if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach((track) => track.stop());
-      localStreamRef.current = null;
-    }
-    if (myVideo.current) myVideo.current.srcObject = null;
-    socket.emit("leave-room");
-    setStatus("Call ended.");
-    window.location.reload();
-  };
-
-  const toggleMute = () => {
-    if (!localStreamRef.current) return;
-    const audioTrack = localStreamRef.current.getAudioTracks()[0];
-    if (audioTrack) {
-      audioTrack.enabled = !audioTrack.enabled;
-      setIsAudioMuted(!audioTrack.enabled);
-    }
-  };
-
-  const toggleVideo = () => {
-    if (!localStreamRef.current) return;
-    const videoTrack = localStreamRef.current.getVideoTracks()[0];
-    if (videoTrack) {
-      videoTrack.enabled = !videoTrack.enabled;
-      setIsVideoOff(!videoTrack.enabled);
-    }
-  };
-
-  const divRef = useRef(null);
-  const [recording, setRecording] = useState(false);
-  const videoBlob = useState(null)[0];
-  const mediaStream = useRef(null);
-  const recorder = useRef(null);
-  const chunks = useRef([]);
-
-  const startCanvasUpdates = (canvas, sourceDiv) => {
-    const ctx = canvas.getContext("2d");
-    setInterval(async () => {
-      try {
-        const snapshot = await html2canvas(sourceDiv);
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.drawImage(snapshot, 0, 0, canvas.width, canvas.height);
-      } catch (error) {
-        console.error("Error capturing canvas snapshot:", error);
-      }
-    }, 1000 / 30);
-  };
-
-  const captureDivWithAudio = async () => {
-    const sourceDiv = divRef.current;
-    const { width, height } = sourceDiv.getBoundingClientRect();
-
-    const canvas = document.createElement("canvas");
-    canvas.width = width;
-    canvas.height = height;
-
-    startCanvasUpdates(canvas, sourceDiv);
-
-    const canvasStream = canvas.captureStream(30);
-
-    // Get the local audio stream
-    const localAudioStream = await navigator.mediaDevices.getUserMedia({
-      audio: true,
-    });
-
-    // Prepare AudioContext for mixing
-    const audioContext = new AudioContext();
-    const destination = audioContext.createMediaStreamDestination();
-
-    // Add local audio to the AudioContext
-    const localAudioSource = audioContext.createMediaStreamSource(
-      localAudioStream
-    );
-    localAudioSource.connect(destination);
-
-    // Add remote audio to the AudioContext
-    if (callAccepted && userVideo.current?.srcObject) {
-      const remoteAudioStream = userVideo.current.srcObject;
-      const remoteAudioSource = audioContext.createMediaStreamSource(
-        remoteAudioStream
-      );
-      remoteAudioSource.connect(destination);
-    }
-
-    // Create a combined stream
-    const combinedStream = new MediaStream();
-
-    // Add canvas video track to the combined stream
-    canvasStream
-      .getVideoTracks()
-      .forEach((track) => combinedStream.addTrack(track));
-
-    // Add mixed audio track to the combined stream
-    destination.stream
-      .getAudioTracks()
-      .forEach((track) => combinedStream.addTrack(track));
-
-    mediaStream.current = localAudioStream; // Store the local audio stream to stop later
-
-    return combinedStream;
-  };
-
-  // Add these state variables
-  const [recordingInterval, setRecordingInterval] = useState(null);
-  const [isUploading, setIsUploading] = useState(false);
-
-  // Modified startRecording function
-  const startRecording = async () => {
-    try {
-      const stream = await captureDivWithAudio();
-      mediaStream.current = stream;
-      chunks.current = [];
-
-      recorder.current = new MediaRecorder(stream, {
-        mimeType: "video/webm;codecs=vp9,opus",
-      });
-
-      // Upload chunks every 5 seconds (adjust as needed)
-      const interval = setInterval(() => {
-        if (chunks.current.length > 0 && !isUploading) {
-          uploadChunks();
-        }
-      }, 5000);
-
-      setRecordingInterval(interval);
-
-      recorder.current.ondataavailable = (e) => {
-        if (e.data.size > 0) {
-          chunks.current.push(e.data);
-        }
-      };
-
-      recorder.current.start(5000); // Collect 30-second chunks
-      setRecording(true);
-    } catch (error) {
-      console.error("Recording start failed:", error);
-    }
-  };
-
-  // New function to upload chunks
-  const uploadChunks = async () => {
-    if (chunks.current.length === 0 || isUploading) return;
-
-    setIsUploading(true);
-    const chunkToUpload = chunks.current.shift();
-
-    try {
-      const formData = new FormData();
-      formData.append("chunk", chunkToUpload);
-      const index = chunkIndexRef.current++;
-      formData.append("chunk", chunkToUpload);
-
-      await fetch(`${BACKEND_LINK}/upload-chunk/${me}/${index}`, {
-        method: "POST",
-        body: formData,
-      });
-
-      console.log("Chunk uploaded successfully");
-    } catch (error) {
-      console.error("Chunk upload failed:", error);
-      // Requeue failed chunk
-      chunks.current.unshift(chunkToUpload);
-    } finally {
-      setIsUploading(false);
-    }
-  };
-
-  // Modified stopRecording function
-  const stopRecording = () => {
-    if (recorder.current && recorder.current.state === "recording") {
-      recorder.current.stop();
-    }
-    if (recordingInterval) {
-      clearInterval(recordingInterval);
-    }
-
-    // Upload any remaining chunks
-    if (chunks.current.length > 0) {
-      uploadChunks();
-    }
-
-    setRecording(false);
-  };
-
-  // Cleanup interval on unmount
-  useEffect(() => {
-    return () => {
-      if (recordingInterval) {
-        clearInterval(recordingInterval);
-      }
-    };
-  }, [recordingInterval]);
 
   return (
     <div className="bg-gray-50 flex flex-col justify-center items-center min-h-screen p-4">
@@ -657,7 +362,7 @@ const VideoCallPage = () => {
                         alert("Please select an appointment first");
                         return;
                       }
-                      joinAsDoctor(room, userName);
+                      // joinAsDoctor(room, userName);
                     }}
                     className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors bg-blue-600 hover:bg-blue-700 text-white h-10 px-4 py-2"
                   >
@@ -695,7 +400,7 @@ const VideoCallPage = () => {
                 </div>
                 <div className="flex justify-end">
                   <button
-                    onClick={() => joinAsParticipant(room, userName)}
+                    // onClick={() => joinAsParticipant(room, userName)}
                     disabled={!room || !userName}
                     className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors bg-blue-600 hover:bg-blue-700 text-white h-10 px-4 py-2 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
@@ -757,159 +462,19 @@ const VideoCallPage = () => {
           </div>
         )}
       </div>
-      {role && (
-        <div className="rounded-lg border bg-white shadow-sm w-full mt-6">
-          <div className="bg-blue-600 p-4">
-            <h2 className="text-2xl font-semibold text-white mb-2">
-              Call with {userName}
-            </h2>
-          </div>
-          {/* <div className="flex flex-col items-center">
+      <div className="rounded-lg border bg-white shadow-sm w-full mt-6">
+        <div className="bg-blue-600 p-4">
+          <h2 className="text-2xl font-semibold text-white mb-2">
+            Call with {userName}
+          </h2>
+        </div>
+        {/* <div className="flex flex-col items-center">
           <h1 className="text-2xl font-bold text-gray-800 mb-6">
             {isHost ? "Host Meeting" : "Join Meeting"}
           </h1>
         </div> */}
-
-          <div
-            ref={divRef}
-            className="flex justify-center p-6 video-container gap-4"
-          >
-            {/* {callAccepted && !callEnded && ( */}
-            <div className="relative h-80 bg-gray-200 rounded-lg overflow-hidden flex-2">
-              {waitingForHost && (
-                <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center z-10">
-                  <div className="text-center p-4 bg-white bg-opacity-90 rounded-lg">
-                    <p className="text-xl font-medium text-gray-800">
-                      Waiting for Doctor
-                    </p>
-                    <p className="text-gray-600">
-                      The consultation will begin when the doctor joins
-                    </p>
-                  </div>
-                </div>
-              )}
-              <video
-                playsInline
-                ref={userVideo}
-                autoPlay
-                className="w-full h-full object-cover"
-              />
-              <p className="absolute bottom-2 left-2 bg-black bg-opacity-50 text-white px-2 py-1 rounded">
-                {role}
-              </p>
-            </div>
-            {/* )} */}
-            <div className="relative h-80 bg-gray-200 rounded-lg overflow-hidden flex-1">
-              <video
-                playsInline
-                muted
-                ref={myVideo}
-                autoPlay
-                className="w-full h-full object-cover"
-              />
-              <p className="absolute bottom-2 left-2 bg-black bg-opacity-50 text-white px-2 py-1 rounded">
-                {userName || "You"}
-              </p>
-              <button
-                onClick={toggleMute}
-                className={`px-4 py-2 rounded-lg mr-2 ${
-                  isAudioMuted
-                    ? "bg-yellow-500 hover:bg-yellow-600"
-                    : "bg-blue-500 hover:bg-blue-600"
-                } text-white`}
-              >
-                {isAudioMuted ? "Unmute" : "Mute"}
-              </button>
-
-              <button
-                onClick={toggleVideo}
-                className={`px-4 py-2 rounded-lg mr-2 ${
-                  isVideoOff
-                    ? "bg-yellow-500 hover:bg-yellow-600"
-                    : "bg-blue-500 hover:bg-blue-600"
-                } text-white`}
-              >
-                {isVideoOff ? "Turn On Video" : "Turn Off Video"}
-              </button>
-            </div>
-          </div>
-
-          {!waitingForHost && (
-            <div className="text-center mb-4">
-              {!recording ? (
-                <button
-                  onClick={startRecording}
-                  className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 mr-2"
-                >
-                  <FaVideo className="inline-block mr-2" />
-                  Start Recording
-                </button>
-              ) : (
-                <button
-                  onClick={stopRecording}
-                  className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 mr-2"
-                >
-                  <FaStop className="inline-block mr-2" />
-                  Stop Recording
-                </button>
-              )}
-              <button
-                onClick={leaveCall}
-                className="bg-red-500 text-white rounded-lg py-2 px-4 hover:bg-red-600 focus:outline-none"
-              >
-                <FaPhoneSlash className="inline-block mr-2" />
-                End Call
-              </button>
-              <button
-                onClick={toggleMute}
-                className={`px-4 py-2 rounded-lg mr-2 ${
-                  isAudioMuted
-                    ? "bg-yellow-500 hover:bg-yellow-600"
-                    : "bg-blue-500 hover:bg-blue-600"
-                } text-white`}
-              >
-                {isAudioMuted ? "Unmute" : "Mute"}
-              </button>
-
-              <button
-                onClick={toggleVideo}
-                className={`px-4 py-2 rounded-lg mr-2 ${
-                  isVideoOff
-                    ? "bg-yellow-500 hover:bg-yellow-600"
-                    : "bg-blue-500 hover:bg-blue-600"
-                } text-white`}
-              >
-                {isVideoOff ? "Turn On Video" : "Turn Off Video"}
-              </button>
-            </div>
-          )}
-
-          {/* <div className="p-4 border rounded bg-gray-50">
-            <p>Status: {status}</p>
-            {role === "doctor" && participants.length > 0 && (
-              <div>
-                <p className="mt-2 font-medium">Participants:</p>
-                <ul className="list-disc pl-6">
-                  {participants.map((p) => (
-                    <li key={p.id}>{p.name}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div> */}
-
-          {videoBlob && (
-            <div className="flex flex-col items-center mt-6">
-              <h3 className="mb-2 text-lg font-medium">Recorded Video:</h3>
-              <video
-                controls
-                className="w-full max-w-lg border border-gray-300 rounded-lg"
-                src={URL.createObjectURL(videoBlob)}
-              />
-            </div>
-          )}
-        </div>
-      )}
+        <VideoCore />
+      </div>
     </div>
   );
 };
