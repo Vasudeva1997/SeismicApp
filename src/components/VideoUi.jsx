@@ -5,10 +5,8 @@ import { FaPhoneSlash, FaStop, FaVideo } from "react-icons/fa";
 function VideoUi({
   myStream,
   socket,
-  setStatus,
   userVideo,
   myVideo,
-  callAccepted,
   BACKEND_LINK,
   me,
   waitingForHost,
@@ -27,7 +25,6 @@ function VideoUi({
   const leaveCall = () => {
     removeMyStream();
     socket.disconnect();
-    setStatus("Call ended.");
     window.location.reload();
   };
 
@@ -91,17 +88,15 @@ function VideoUi({
     const destination = audioContext.createMediaStreamDestination();
 
     // Add local audio to the AudioContext
-    const localAudioSource = audioContext.createMediaStreamSource(
-      localAudioStream
-    );
+    const localAudioSource =
+      audioContext.createMediaStreamSource(localAudioStream);
     localAudioSource.connect(destination);
 
     // Add remote audio to the AudioContext
-    if (callAccepted && userVideo.current?.srcObject) {
+    if (userVideo.current?.srcObject) {
       const remoteAudioStream = userVideo.current.srcObject;
-      const remoteAudioSource = audioContext.createMediaStreamSource(
-        remoteAudioStream
-      );
+      const remoteAudioSource =
+        audioContext.createMediaStreamSource(remoteAudioStream);
       remoteAudioSource.connect(destination);
     }
 
@@ -214,7 +209,12 @@ function VideoUi({
   }, [recordingInterval]);
 
   return (
-    <div>
+    <div className="rounded-lg border bg-white shadow-sm w-full mt-6">
+      <div className="bg-blue-600 p-4">
+        <h2 className="text-2xl font-semibold text-white mb-2">
+          Call with {userName}
+        </h2>
+      </div>
       <div
         ref={divRef}
         className="flex justify-center p-6 video-container gap-4"

@@ -12,14 +12,15 @@ import Reports from "./Pages/Reports";
 import Settings from "./Pages/Settings";
 import NotFound from "./Pages/not-found";
 import VideoRecorder from "./Pages/VideoRecorder";
+import VideoCore from "./components/VideoCore";
 
 function Router() {
   const queryParams = new URLSearchParams(window.location.search);
-  const roomParam = queryParams.get("room");
+  const role = queryParams.get("role");
 
   return (
     <div className="h-screen flex overflow-hidden">
-      {!roomParam && <Sidebar />}
+      {role !== "patient" && <Sidebar />}
       <div className="flex-1 flex flex-col overflow-hidden">
         <Header />
         <main className="flex-1 overflow-y-auto bg-neutral-50 p-6">
@@ -30,6 +31,7 @@ function Router() {
             <Route path="/patients" component={Patients} />
             <Route path="/reports" component={Reports} />
             <Route path="/settings" component={Settings} />
+            <Route path="/meeting-room" component={VideoCore} />
             <Route component={NotFound} />
           </Switch>
         </main>

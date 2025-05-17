@@ -2,34 +2,25 @@ import React, { useEffect, useRef, useState } from "react";
 import io from "socket.io-client";
 import { Row, Col } from "antd";
 import VideoUi from "./VideoUi";
+import { useToast } from "../hooks/use-toast";
 
 const socket = io("http://localhost:8080");
 
-const VideoCore = ({
-  waitingForHost,
-  userName,
-  me,
-  callAccepted,
-  setStatus,
-}) => {
-  const roomId = "123456";
+const VideoCore = () => {
   const queryParams = new URLSearchParams(window.location.search);
   const role = queryParams.get("role");
-  const nickname = "Guest";
+  const roomId = queryParams.get("roomId");
+  const nickname = queryParams.get("name");
   const hasInitialized = useRef(false);
-
+  const { toast } = useToast();
+  const [waitingForHost, setWaitingForHost] = useState(
+    role === "patient" ? true : false
+  );
   const [otherUserNickname, setOtherUserNickname] = useState(undefined);
   const [incomingCall, setIncomingCall] = useState({
     show: false,
     name: "",
     socketId: null,
-  });
-
-  const [modal, setModal] = useState({
-    show: false,
-    title: "",
-    message: "",
-    onConfirm: null,
   });
 
   const [logs, setLogs] = useState({
@@ -77,14 +68,13 @@ const VideoCore = ({
 
   const rtcPeerLogic = () => {
     setLogs((prev) => ({ ...prev, mySocketId: socket.id }));
-    socket.emit("joinRoom", { roomId, nickname });
+    socket.emit("joinRoom", { roomId, nickname, role });
 
     socket.on("otherUserId", ({ otherUserNickname, otherUserSocketId }) => {
-      setModal({
-        show: true,
+      toast({
         title: "Connected",
-        message: `Successfully accepted: ${otherUserNickname}`,
-        onConfirm: () => setModal({ show: false }),
+        description: `Successfully accepted: ${otherUserNickname}`,
+        duration: 3000,
       });
       setLogs((prev) => ({ ...prev, callerSocketId: otherUserSocketId }));
       otherUserId.current = otherUserSocketId;
@@ -105,41 +95,36 @@ const VideoCore = ({
     });
 
     socket.on("acceptedBy", (name) => {
-      setModal({
-        show: true,
+      setWaitingForHost(false);
+      toast({
         title: "Call Accepted",
-        message: `Successfully accepted by user: ${name}`,
-        onConfirm: () => {
-          setOtherUserNickname(name);
-          setModal({ show: false });
-        },
+        description: `Successfully accepted by user: ${name}`,
+        duration: 3000,
       });
+      setOtherUserNickname(name);
     });
 
     socket.on("waitingToBeAcceptedBy", (name) => {
-      setModal({
-        show: true,
+      toast({
         title: "Waiting for Acceptance",
-        message: `Waiting to be accepted by ${name}`,
-        onConfirm: () => setModal({ show: false }),
+        description: `Waiting to be accepted by ${name}`,
+        duration: 3000,
       });
     });
 
     socket.on("callRejected", (name) => {
-      setModal({
-        show: true,
+      toast({
         title: "Call Rejected",
-        message: `User ${name} did not accept your call!`,
-        onConfirm: () => setModal({ show: false }),
+        description: `User ${name} did not accept your call!`,
+        duration: 3000,
       });
     });
 
     socket.on("otherUserDisconnected", (name) => {
-      setModal({
-        show: true,
+      toast({
         title: "Disconnected",
-        message: `${name} just disconnected!`,
-        onConfirm: () => setModal({ show: false }),
+        description: `${name} just disconnected!`,
+        duration: 3000,
       });
       if (partnerVideo.current) partnerVideo.current.srcObject = null;
     });
@@ -287,43 +272,31 @@ const VideoCore = ({
     <>
       {/* Incoming call modal */}
       {incomingCall.show && (
-        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-xl p-6 w-96">
-            <h2 className="text-lg font-semibold mb-4">
-              {incomingCall.name} wants to connect.
-            </h2>
-            <div className="flex justify-end gap-4">
-              <button
-                className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600"
-                onClick={handleReject}
-              >
-                Reject
-              </button>
-              <button
-                className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600"
-                onClick={handleAccept}
-              >
-                Accept
-              </button>
+        <div className="fixed bottom-4 right-4 bg-white rounded-xl shadow-xl p-4 w-80 border border-gray-200">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center">
+              <span className="text-lg font-semibold">
+                {incomingCall.name[0]}
+              </span>
+            </div>
+            <div>
+              <h2 className="text-sm font-semibold">{incomingCall.name}</h2>
+              <p className="text-xs text-gray-500">Incoming call</p>
             </div>
           </div>
-        </div>
-      )}
-
-      {/* Generic message modal */}
-      {modal.show && (
-        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 shadow-lg w-96">
-            <h3 className="text-xl font-semibold mb-2">{modal.title}</h3>
-            <p className="mb-4">{modal.message}</p>
-            <div className="flex justify-end">
-              <button
-                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-                onClick={modal.onConfirm}
-              >
-                OK
-              </button>
-            </div>
+          <div className="flex justify-end gap-2">
+            <button
+              className="px-3 py-1.5 bg-red-500 text-white text-sm rounded hover:bg-red-600 transition-colors"
+              onClick={handleReject}
+            >
+              Reject
+            </button>
+            <button
+              className="px-3 py-1.5 bg-green-500 text-white text-sm rounded hover:bg-green-600 transition-colors"
+              onClick={handleAccept}
+            >
+              Accept
+            </button>
           </div>
         </div>
       )}
@@ -332,15 +305,13 @@ const VideoCore = ({
       <VideoUi
         myStream={myStream}
         socket={socket}
-        setStatus={setStatus}
         userVideo={partnerVideo}
         myVideo={myVideo}
-        callAccepted={callAccepted}
         BACKEND_LINK={"http://localhost:8080"}
         me={nickname}
         waitingForHost={waitingForHost}
         role={role}
-        userName={userName}
+        userName={otherUserNickname}
       />
     </>
   );

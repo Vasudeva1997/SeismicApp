@@ -11,7 +11,7 @@ const Header = () => {
   });
 
   const queryParams = new URLSearchParams(window.location.search);
-  const roomParam = queryParams.get("room");
+  const role = queryParams.get("role");
 
   return (
     <header className="bg-white border-b border-neutral-200 shadow-sm">
@@ -20,7 +20,7 @@ const Header = () => {
           <h1 className="text-xl font-semibold text-neutral-800">
             Healthcare Dashboard
           </h1>
-          {!roomParam && (
+          {role !== "patient" && (
             <div className="hidden md:flex items-center ml-6 space-x-4">
               <div
                 className="text-sm text-primary-500 font-medium cursor-pointer"

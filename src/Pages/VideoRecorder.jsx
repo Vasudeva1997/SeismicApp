@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { io } from "socket.io-client";
 import { FaPhoneSlash, FaVideo, FaStop, FaCopy } from "react-icons/fa";
-import VideoCore from "../components/VideoCore";
+import { navigate } from "wouter/use-browser-location";
 
 // const BACKEND_LINK = "https://seismic-backend-04272025-bjbxatgnadguabg9.centralus-01.azurewebsites.net"
 const BACKEND_LINK = "http://localhost:8080";
@@ -108,7 +108,9 @@ const VideoCallPage = () => {
 
   const nickname = "Guest";
 
-  const [role, setRole] = useState("");
+  const queryParams = new URLSearchParams(window.location.search);
+  const role = queryParams.get("role") || "doctor";
+
   const [status, setStatus] = useState("");
 
   const createRoom = (roomId) => {
@@ -120,12 +122,11 @@ const VideoCallPage = () => {
       return;
     }
 
-    socket.emit("createRoom", { roomId, nickname });
+    socket.emit("createRoom", { roomId, nickname, role });
 
     socket.once("roomCreated", (data) => {
       console.log("");
       console.log("Room created:", data.roomId);
-      generateJoinLink(data.roomId);
     });
 
     socket.once("roomExists", () => {
@@ -144,21 +145,23 @@ const VideoCallPage = () => {
     }
 
     setAppointmentId(selectedAppointmentId);
-    const meetingId = selectedAppointmentId; // Use appointment ID as meeting ID
-    setRoom(meetingId);
+    setRoom(selectedAppointmentId);
     setUserName("Mike");
     setAppointmentDetails(appointment);
 
     if (!validateAppointmentTime(appointment)) {
       return;
     }
+    generateJoinLink(selectedAppointmentId);
 
     createRoom(selectedAppointmentId);
   };
 
   const generateJoinLink = (room) => {
     const currentUrl = window.location.href.split("?")[0];
-    const link = `${currentUrl}?room=${encodeURIComponent(room)}`;
+    const link = `${currentUrl}?room=${encodeURIComponent(
+      room
+    )}&role=patient&name=${userName}`;
     setJoinLink(link);
     setShowShareLink(true);
     return link;
@@ -169,8 +172,24 @@ const VideoCallPage = () => {
     alert("Link copied to clipboard!");
   };
 
+  const joinAsParticipant = (room, name) => {
+    navigate(
+      `/meeting-room?roomId=${encodeURIComponent(
+        room
+      )}&role=patient&name=${userName}`
+    );
+  };
+
+  const joinAsDoctor = (room, name) => {
+    navigate(
+      `/meeting-room?roomId=${encodeURIComponent(
+        room
+      )}&role=doctor&name=${userName}`
+    );
+  };
+
   return (
-    <div className="bg-gray-50 flex flex-col justify-center items-center min-h-screen p-4">
+    <div className="bg-gray-50 flex flex-col items-center min-h-screen p-4">
       <div className="rounded-lg border bg-white shadow-sm w-full">
         <div className="flex flex-col space-y-1.5 p-6">
           <h3 className="text-2xl font-semibold leading-none tracking-tight">
@@ -184,36 +203,42 @@ const VideoCallPage = () => {
         <div className="p-6 pt-0">
           <div className="space-y-4">
             <div className="inline-flex h-10 items-center justify-center rounded-md bg-gray-100 p-1 text-gray-500 mb-4">
-              <button
-                onClick={() => setActiveTab("upcoming")}
-                className={`inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium transition-all ${
-                  activeTab === "upcoming"
-                    ? "bg-white text-gray-900 shadow-sm"
-                    : "hover:text-gray-900"
-                }`}
-              >
-                Upcoming Calls
-              </button>
-              <button
-                onClick={() => setActiveTab("join")}
-                className={`inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium transition-all ${
-                  activeTab === "join"
-                    ? "bg-white text-gray-900 shadow-sm"
-                    : "hover:text-gray-900"
-                }`}
-              >
-                Join by ID
-              </button>
-              <button
-                onClick={() => setActiveTab("history")}
-                className={`inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium transition-all ${
-                  activeTab === "history"
-                    ? "bg-white text-gray-900 shadow-sm"
-                    : "hover:text-gray-900"
-                }`}
-              >
-                Call History
-              </button>
+              {role === "doctor" && (
+                <button
+                  onClick={() => setActiveTab("upcoming")}
+                  className={`inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium transition-all ${
+                    activeTab === "upcoming"
+                      ? "bg-white text-gray-900 shadow-sm"
+                      : "hover:text-gray-900"
+                  }`}
+                >
+                  Upcoming Calls
+                </button>
+              )}
+              {role === "patient" && (
+                <button
+                  onClick={() => setActiveTab("join")}
+                  className={`inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium transition-all ${
+                    activeTab === "join"
+                      ? "bg-white text-gray-900 shadow-sm"
+                      : "hover:text-gray-900"
+                  }`}
+                >
+                  Join by ID
+                </button>
+              )}
+              {role === "doctor" && (
+                <button
+                  onClick={() => setActiveTab("history")}
+                  className={`inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium transition-all ${
+                    activeTab === "history"
+                      ? "bg-white text-gray-900 shadow-sm"
+                      : "hover:text-gray-900"
+                  }`}
+                >
+                  Call History
+                </button>
+              )}
             </div>
 
             {activeTab === "upcoming" && (
@@ -362,7 +387,7 @@ const VideoCallPage = () => {
                         alert("Please select an appointment first");
                         return;
                       }
-                      // joinAsDoctor(room, userName);
+                      joinAsDoctor(room, userName);
                     }}
                     className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors bg-blue-600 hover:bg-blue-700 text-white h-10 px-4 py-2"
                   >
@@ -370,6 +395,30 @@ const VideoCallPage = () => {
                     Start Video Call
                   </button>
                 </div>
+                {showShareLink && (
+                  <div className="mt-6 p-4 bg-gray-100 rounded-lg">
+                    <h3 className="font-medium text-gray-800 mb-2">
+                      Invite others to join
+                    </h3>
+                    <div className="flex items-center">
+                      <input
+                        type="text"
+                        value={joinLink}
+                        readOnly
+                        className="border border-gray-300 rounded-l-lg px-4 py-2 flex-grow"
+                      />
+                      <button
+                        onClick={copyToClipboard}
+                        className="bg-blue-500 text-white px-4 py-2 rounded-r-lg hover:bg-blue-600"
+                      >
+                        <FaCopy className="inline-block mr-1" /> Copy
+                      </button>
+                    </div>
+                    <p className="text-sm text-gray-600 mt-2">
+                      Share this link with participants to join your meeting
+                    </p>
+                  </div>
+                )}
               </div>
             )}
 
@@ -400,7 +449,7 @@ const VideoCallPage = () => {
                 </div>
                 <div className="flex justify-end">
                   <button
-                    // onClick={() => joinAsParticipant(room, userName)}
+                    onClick={() => joinAsParticipant(room, userName)}
                     disabled={!room || !userName}
                     className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors bg-blue-600 hover:bg-blue-700 text-white h-10 px-4 py-2 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
@@ -437,43 +486,6 @@ const VideoCallPage = () => {
             <p>{status}</p>
           </div>
         )}
-        {showShareLink && (
-          <div className="mt-6 p-4 bg-gray-100 rounded-lg">
-            <h3 className="font-medium text-gray-800 mb-2">
-              Invite others to join
-            </h3>
-            <div className="flex items-center">
-              <input
-                type="text"
-                value={joinLink}
-                readOnly
-                className="border border-gray-300 rounded-l-lg px-4 py-2 flex-grow"
-              />
-              <button
-                onClick={copyToClipboard}
-                className="bg-blue-500 text-white px-4 py-2 rounded-r-lg hover:bg-blue-600"
-              >
-                <FaCopy className="inline-block mr-1" /> Copy
-              </button>
-            </div>
-            <p className="text-sm text-gray-600 mt-2">
-              Share this link with participants to join your meeting
-            </p>
-          </div>
-        )}
-      </div>
-      <div className="rounded-lg border bg-white shadow-sm w-full mt-6">
-        <div className="bg-blue-600 p-4">
-          <h2 className="text-2xl font-semibold text-white mb-2">
-            Call with {userName}
-          </h2>
-        </div>
-        {/* <div className="flex flex-col items-center">
-          <h1 className="text-2xl font-bold text-gray-800 mb-6">
-            {isHost ? "Host Meeting" : "Join Meeting"}
-          </h1>
-        </div> */}
-        <VideoCore />
       </div>
     </div>
   );
