@@ -233,12 +233,42 @@ function VideoUi({
               </div>
             </div>
           )}
-          <video
-            playsInline
-            ref={userVideo}
-            autoPlay
-            className="w-full h-full object-cover"
-          />
+          <div className="relative w-full h-full group">
+            <video
+              playsInline
+              ref={userVideo}
+              autoPlay
+              controls
+              className="w-full h-full object-cover [&::-webkit-media-controls]:opacity-0 group-hover:[&::-webkit-media-controls]:opacity-100 transition-opacity duration-300 [&::-webkit-media-controls-panel]:!bg-transparent [&::-webkit-media-controls-timeline]:!bg-white/30 [&::-webkit-media-controls-current-time-display]:!text-white [&::-webkit-media-controls-time-remaining-display]:!text-white [&::-webkit-media-controls-mute-button]:!hidden [&::-webkit-media-controls-volume-slider]:!hidden [&::-webkit-media-controls-fullscreen-button]:!hidden"
+            />
+            <button
+              onClick={() => {
+                if (userVideo.current) {
+                  if (document.fullscreenElement) {
+                    document.exitFullscreen();
+                  } else {
+                    userVideo.current.requestFullscreen();
+                  }
+                }
+              }}
+              className="absolute bottom-4 right-4 bg-black/50 text-white p-2 rounded-full hover:bg-black/75 transition-all opacity-0 group-hover:opacity-100"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-6 w-6"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5v-4m0 4h-4m4 0l-5-5"
+                />
+              </svg>
+            </button>
+          </div>
           <p className="absolute bottom-2 left-2 bg-black bg-opacity-50 text-white px-2 py-1 rounded">
             {role}
           </p>
