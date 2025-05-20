@@ -1,6 +1,5 @@
-import React, { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import io from "socket.io-client";
-import { Row, Col } from "antd";
 import VideoUi from "./VideoUi";
 import { useToast } from "../hooks/use-toast";
 
@@ -23,7 +22,7 @@ const VideoCore = () => {
     socketId: null,
   });
 
-  const [logs, setLogs] = useState({
+  const setLogs = useState({
     myNickname: nickname,
     roomId,
     callerSocketId: undefined,
@@ -37,7 +36,7 @@ const VideoCore = () => {
     sentAnswers: [],
     sentICECandidates: [],
     receivedICECandidates: [],
-  });
+  })[1];
 
   const myVideo = useRef(null);
   const partnerVideo = useRef(null);
@@ -64,6 +63,7 @@ const VideoCore = () => {
     })();
 
     return removeMyStream;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const rtcPeerLogic = () => {
@@ -255,11 +255,6 @@ const VideoCore = () => {
   const handleReject = () => {
     socket.emit("callRejected", { roomId, nickname });
     setIncomingCall({ show: false, name: "", socketId: null });
-  };
-
-  const onCallHangUp = () => {
-    removeMyStream();
-    socket.disconnect();
   };
 
   window.addEventListener("beforeunload", (ev) => {

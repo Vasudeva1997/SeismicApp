@@ -1,6 +1,17 @@
 import html2canvas from "html2canvas";
-import React, { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { FaPhoneSlash, FaStop, FaVideo } from "react-icons/fa";
+
+const getFormattedDate = () => {
+  const now = new Date();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  const hours = String(now.getHours()).padStart(2, '0');
+  const minutes = String(now.getMinutes()).padStart(2, '0');
+  return `${month}${day}-${hours}${minutes}`
+}
+
+const DATETIME = getFormattedDate()
 
 function VideoUi({
   myStream,
@@ -13,8 +24,6 @@ function VideoUi({
   role,
   userName,
 }) {
-  const chunkIndexRef = useRef(0);
-
   const [isAudioMuted, setIsAudioMuted] = useState(false);
   const [isVideoOff, setIsVideoOff] = useState(false);
 
@@ -47,166 +56,112 @@ function VideoUi({
   };
 
   const divRef = useRef(null);
+  const canvasRef = useRef(null);
   const [recording, setRecording] = useState(false);
-  const videoBlob = useState(null)[0];
-  const mediaStream = useRef(null);
-  const recorder = useRef(null);
-  const chunks = useRef([]);
+  const mediaRecorderRef = useRef(null);
+  const chunksRef = useRef([]);
+  const intervalRef = useRef(null);
+  const canvasDrawIntervalRef = useRef(null);
+  const streamRef = useRef(null);
+  const chunkIndex = useRef(0)
 
-  const startCanvasUpdates = (canvas, sourceDiv) => {
-    const ctx = canvas.getContext("2d");
-    setInterval(async () => {
-      try {
-        const snapshot = await html2canvas(sourceDiv);
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.drawImage(snapshot, 0, 0, canvas.width, canvas.height);
-      } catch (error) {
-        console.error("Error capturing canvas snapshot:", error);
-      }
-    }, 1000 / 30);
-  };
+  const startRecording = async () => {
+    if (!divRef.current || !canvasRef.current) return;
 
-  const captureDivWithAudio = async () => {
-    const sourceDiv = divRef.current;
-    const { width, height } = sourceDiv.getBoundingClientRect();
+    // Set canvas size same as div
+    const { offsetWidth, offsetHeight } = divRef.current;
+    canvasRef.current.width = offsetWidth;
+    canvasRef.current.height = offsetHeight;
 
-    const canvas = document.createElement("canvas");
-    canvas.width = width;
-    canvas.height = height;
+    // Start drawing the div content into the canvas
+    canvasDrawIntervalRef.current = setInterval(() => {
+      html2canvas(divRef.current).then((canvasImage) => {
+        const ctx = canvasRef.current.getContext("2d");
+        ctx.clearRect(0, 0, offsetWidth, offsetHeight);
+        ctx.drawImage(canvasImage, 0, 0, offsetWidth, offsetHeight);
+      });
+    }, 100); // ~10fps
 
-    startCanvasUpdates(canvas, sourceDiv);
-
-    const canvasStream = canvas.captureStream(30);
-
-    // Get the local audio stream
-    const localAudioStream = await navigator.mediaDevices.getUserMedia({
+    const canvasStream = canvasRef.current.captureStream(30); // 30fps
+    const audioStream = await navigator.mediaDevices.getUserMedia({
       audio: true,
     });
 
-    // Prepare AudioContext for mixing
-    const audioContext = new AudioContext();
-    const destination = audioContext.createMediaStreamDestination();
+    // Combine canvas + audio
+    const combinedStream = new MediaStream([
+      ...canvasStream.getVideoTracks(),
+      ...audioStream.getAudioTracks(),
+    ]);
+    streamRef.current = combinedStream;
 
-    // Add local audio to the AudioContext
-    const localAudioSource =
-      audioContext.createMediaStreamSource(localAudioStream);
-    localAudioSource.connect(destination);
+    startMediaRecorder(combinedStream); // Start first 5s chunk
 
-    // Add remote audio to the AudioContext
-    if (userVideo.current?.srcObject) {
-      const remoteAudioStream = userVideo.current.srcObject;
-      const remoteAudioSource =
-        audioContext.createMediaStreamSource(remoteAudioStream);
-      remoteAudioSource.connect(destination);
-    }
+    // Repeat every 5 seconds
+    intervalRef.current = setInterval(() => {
+      if (
+        mediaRecorderRef.current &&
+        mediaRecorderRef.current.state === "recording"
+      ) {
+        mediaRecorderRef.current.stop(); // this triggers ondataavailable
+        startMediaRecorder(combinedStream); // start next chunk
+      }
+    }, 5000);
 
-    // Create a combined stream
-    const combinedStream = new MediaStream();
-
-    // Add canvas video track to the combined stream
-    canvasStream
-      .getVideoTracks()
-      .forEach((track) => combinedStream.addTrack(track));
-
-    // Add mixed audio track to the combined stream
-    destination.stream
-      .getAudioTracks()
-      .forEach((track) => combinedStream.addTrack(track));
-
-    mediaStream.current = localAudioStream; // Store the local audio stream to stop later
-
-    return combinedStream;
+    setRecording(true);
   };
 
-  // Add these state variables
-  const [recordingInterval, setRecordingInterval] = useState(null);
-  const [isUploading, setIsUploading] = useState(false);
+  const startMediaRecorder = (stream) => {
+    const recorder = new MediaRecorder(stream, { mimeType: "video/webm" });
+    chunksRef.current = [];
 
-  // Modified startRecording function
-  const startRecording = async () => {
-    try {
-      const stream = await captureDivWithAudio();
-      mediaStream.current = stream;
-      chunks.current = [];
+    recorder.ondataavailable = async (e) => {
+      if (e.data.size > 0) {
+        const blob = new Blob([e.data], { type: "video/webm" });
+        const formData = new FormData();
+        const index = chunkIndex.current++
+        formData.append("chunk", blob, `recording-${index}.webm`);
 
-      recorder.current = new MediaRecorder(stream, {
-        mimeType: "video/webm;codecs=vp9,opus",
-      });
+        try {
+          const response = await fetch(
+            `${BACKEND_LINK}/upload-chunk/Guest-${DATETIME}/${index}`,
+            {
+              method: "POST",
+              body: formData,
+            }
+          );
 
-      // Upload chunks every 5 seconds (adjust as needed)
-      const interval = setInterval(() => {
-        if (chunks.current.length > 0 && !isUploading) {
-          uploadChunks();
+          if (!response.ok) {
+            throw new Error("Upload failed");
+          }
+
+          console.log("Upload successful");
+        } catch (err) {
+          console.error("Upload error:", err);
         }
-      }, 5000);
+      }
+    };
 
-      setRecordingInterval(interval);
-
-      recorder.current.ondataavailable = (e) => {
-        if (e.data.size > 0) {
-          chunks.current.push(e.data);
-        }
-      };
-
-      recorder.current.start(5000); // Collect 30-second chunks
-      setRecording(true);
-    } catch (error) {
-      console.error("Recording start failed:", error);
-    }
+    recorder.start();
+    mediaRecorderRef.current = recorder;
   };
 
-  // New function to upload chunks
-  const uploadChunks = async () => {
-    if (chunks.current.length === 0 || isUploading) return;
-
-    setIsUploading(true);
-    const chunkToUpload = chunks.current.shift();
-
-    try {
-      const formData = new FormData();
-      formData.append("chunk", chunkToUpload);
-      const index = chunkIndexRef.current++;
-
-      await fetch(`${BACKEND_LINK}/upload-chunk/${me}/${index}`, {
-        method: "POST",
-        body: formData,
-      });
-
-      console.log("Chunk uploaded successfully");
-    } catch (error) {
-      console.error("Chunk upload failed:", error);
-      // Requeue failed chunk
-      chunks.current.unshift(chunkToUpload);
-    } finally {
-      setIsUploading(false);
-    }
-  };
-
-  // Modified stopRecording function
   const stopRecording = () => {
-    if (recorder.current && recorder.current.state === "recording") {
-      recorder.current.stop();
-    }
-    if (recordingInterval) {
-      clearInterval(recordingInterval);
+    clearInterval(intervalRef.current);
+    clearInterval(canvasDrawIntervalRef.current);
+
+    if (
+      mediaRecorderRef.current &&
+      mediaRecorderRef.current.state === "recording"
+    ) {
+      mediaRecorderRef.current.stop();
     }
 
-    // Upload any remaining chunks
-    if (chunks.current.length > 0) {
-      uploadChunks();
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
     }
 
     setRecording(false);
   };
-
-  // Cleanup interval on unmount
-  useEffect(() => {
-    return () => {
-      if (recordingInterval) {
-        clearInterval(recordingInterval);
-      }
-    };
-  }, [recordingInterval]);
 
   return (
     <div className="rounded-lg border bg-white shadow-sm w-full mt-6">
@@ -287,27 +242,26 @@ function VideoUi({
           </p>
           <button
             onClick={toggleMute}
-            className={`px-4 py-2 rounded-lg mr-2 ${
-              isAudioMuted
-                ? "bg-yellow-500 hover:bg-yellow-600"
-                : "bg-blue-500 hover:bg-blue-600"
-            } text-white`}
+            className={`px-4 py-2 rounded-lg mr-2 ${isAudioMuted
+              ? "bg-yellow-500 hover:bg-yellow-600"
+              : "bg-blue-500 hover:bg-blue-600"
+              } text-white`}
           >
             {isAudioMuted ? "Unmute" : "Mute"}
           </button>
 
           <button
             onClick={toggleVideo}
-            className={`px-4 py-2 rounded-lg mr-2 ${
-              isVideoOff
-                ? "bg-yellow-500 hover:bg-yellow-600"
-                : "bg-blue-500 hover:bg-blue-600"
-            } text-white`}
+            className={`px-4 py-2 rounded-lg mr-2 ${isVideoOff
+              ? "bg-yellow-500 hover:bg-yellow-600"
+              : "bg-blue-500 hover:bg-blue-600"
+              } text-white`}
           >
             {isVideoOff ? "Turn On Video" : "Turn Off Video"}
           </button>
         </div>
       </div>
+      <canvas ref={canvasRef} style={{ display: "none" }} />
       <div className="text-center mb-4">
         {!recording ? (
           <button
@@ -335,36 +289,24 @@ function VideoUi({
         </button>
         <button
           onClick={toggleMute}
-          className={`px-4 py-2 rounded-lg mr-2 ${
-            isAudioMuted
-              ? "bg-yellow-500 hover:bg-yellow-600"
-              : "bg-blue-500 hover:bg-blue-600"
-          } text-white`}
+          className={`px-4 py-2 rounded-lg mr-2 ${isAudioMuted
+            ? "bg-yellow-500 hover:bg-yellow-600"
+            : "bg-blue-500 hover:bg-blue-600"
+            } text-white`}
         >
           {isAudioMuted ? "Unmute" : "Mute"}
         </button>
 
         <button
           onClick={toggleVideo}
-          className={`px-4 py-2 rounded-lg mr-2 ${
-            isVideoOff
-              ? "bg-yellow-500 hover:bg-yellow-600"
-              : "bg-blue-500 hover:bg-blue-600"
-          } text-white`}
+          className={`px-4 py-2 rounded-lg mr-2 ${isVideoOff
+            ? "bg-yellow-500 hover:bg-yellow-600"
+            : "bg-blue-500 hover:bg-blue-600"
+            } text-white`}
         >
           {isVideoOff ? "Turn On Video" : "Turn Off Video"}
         </button>
       </div>
-      {videoBlob && (
-        <div className="flex flex-col items-center mt-6">
-          <h3 className="mb-2 text-lg font-medium">Recorded Video:</h3>
-          <video
-            controls
-            className="w-full max-w-lg border border-gray-300 rounded-lg"
-            src={URL.createObjectURL(videoBlob)}
-          />
-        </div>
-      )}
     </div>
   );
 }

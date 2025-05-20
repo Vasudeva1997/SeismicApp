@@ -1,6 +1,6 @@
-import React, { useState, useRef, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { io } from "socket.io-client";
-import { FaPhoneSlash, FaVideo, FaStop, FaCopy } from "react-icons/fa";
+import { FaVideo, FaCopy } from "react-icons/fa";
 import { navigate } from "wouter/use-browser-location";
 
 // const BACKEND_LINK = "https://seismic-backend-04272025-bjbxatgnadguabg9.centralus-01.azurewebsites.net"
@@ -11,7 +11,7 @@ const socket = io(BACKEND_LINK);
 const VideoCallPage = () => {
   const [userName, setUserName] = useState("");
   const [room, setRoom] = useState("");
-  const [isHost, setIsHost] = useState(true);
+  const isHost = useState(true)[0];
   const [showShareLink, setShowShareLink] = useState(false);
   const [joinLink, setJoinLink] = useState("");
 
@@ -43,15 +43,15 @@ const VideoCallPage = () => {
     null;
   const patient = selectedAppointment
     ? {
-        firstName: selectedAppointment.patientName.split(" ")[0],
-        lastName: selectedAppointment.patientName.split(" ")[1],
-      }
+      firstName: selectedAppointment.patientName.split(" ")[0],
+      lastName: selectedAppointment.patientName.split(" ")[1],
+    }
     : null;
 
   // Add these new states at the top of the component
   const [invalidMeetingId, setInvalidMeetingId] = useState(false);
   const [meetingExpired, setMeetingExpired] = useState(false);
-  const [appointmentDetails, setAppointmentDetails] = useState(null);
+  const setAppointmentDetails = useState(null)[1];
 
   // Add this helper function
   const validateAppointmentTime = (appointment) => {
@@ -101,17 +101,13 @@ const VideoCallPage = () => {
         setInvalidMeetingId(true);
       }
     }
-    // if (hostParam) {
-    //   setUserName(hostParam);
-    // }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const nickname = "Guest";
 
   const queryParams = new URLSearchParams(window.location.search);
   const role = queryParams.get("role") || "doctor";
-
-  const [status, setStatus] = useState("");
 
   const createRoom = (roomId) => {
     if (!roomId) return alert("Enter a room ID");
@@ -206,11 +202,10 @@ const VideoCallPage = () => {
               {role === "doctor" && (
                 <button
                   onClick={() => setActiveTab("upcoming")}
-                  className={`inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium transition-all ${
-                    activeTab === "upcoming"
-                      ? "bg-white text-gray-900 shadow-sm"
-                      : "hover:text-gray-900"
-                  }`}
+                  className={`inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium transition-all ${activeTab === "upcoming"
+                    ? "bg-white text-gray-900 shadow-sm"
+                    : "hover:text-gray-900"
+                    }`}
                 >
                   Upcoming Calls
                 </button>
@@ -218,11 +213,10 @@ const VideoCallPage = () => {
               {role === "patient" && (
                 <button
                   onClick={() => setActiveTab("join")}
-                  className={`inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium transition-all ${
-                    activeTab === "join"
-                      ? "bg-white text-gray-900 shadow-sm"
-                      : "hover:text-gray-900"
-                  }`}
+                  className={`inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium transition-all ${activeTab === "join"
+                    ? "bg-white text-gray-900 shadow-sm"
+                    : "hover:text-gray-900"
+                    }`}
                 >
                   Join by ID
                 </button>
@@ -230,11 +224,10 @@ const VideoCallPage = () => {
               {role === "doctor" && (
                 <button
                   onClick={() => setActiveTab("history")}
-                  className={`inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium transition-all ${
-                    activeTab === "history"
-                      ? "bg-white text-gray-900 shadow-sm"
-                      : "hover:text-gray-900"
-                  }`}
+                  className={`inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium transition-all ${activeTab === "history"
+                    ? "bg-white text-gray-900 shadow-sm"
+                    : "hover:text-gray-900"
+                    }`}
                 >
                   Call History
                 </button>
@@ -478,12 +471,6 @@ const VideoCallPage = () => {
         {meetingExpired && (
           <div className="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4 mb-4">
             <p>This meeting is not available at this time.</p>
-          </div>
-        )}
-
-        {status && (
-          <div className="bg-blue-100 border-l-4 border-blue-500 text-blue-700 p-4 mb-4">
-            <p>{status}</p>
           </div>
         )}
       </div>
