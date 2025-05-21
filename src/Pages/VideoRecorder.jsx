@@ -3,8 +3,8 @@ import { io } from "socket.io-client";
 import { FaVideo, FaCopy } from "react-icons/fa";
 import { navigate } from "wouter/use-browser-location";
 
-// const BACKEND_LINK = "https://seismic-backend-04272025-bjbxatgnadguabg9.centralus-01.azurewebsites.net"
-const BACKEND_LINK = "http://localhost:8080";
+const BACKEND_LINK = "https://seismic-backend-04272025-bjbxatgnadguabg9.centralus-01.azurewebsites.net"
+// const BACKEND_LINK = "http://localhost:8080";
 
 const socket = io(BACKEND_LINK);
 
