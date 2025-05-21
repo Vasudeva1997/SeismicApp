@@ -12,7 +12,12 @@ import Reports from "./Pages/Reports";
 import Settings from "./Pages/Settings";
 import NotFound from "./Pages/not-found";
 import VideoRecorder from "./Pages/VideoRecorder";
-import { AuthenticatedTemplate, UnauthenticatedTemplate, useIsAuthenticated, useMsal } from "@azure/msal-react";
+import {
+  AuthenticatedTemplate,
+  UnauthenticatedTemplate,
+  useIsAuthenticated,
+  useMsal,
+} from "@azure/msal-react";
 import { SignInButton } from "./components/SignInButton";
 import { useEffect, useState } from "react";
 import { loginRequest } from "./authConfig";
@@ -48,7 +53,7 @@ function Router() {
 function App() {
   const isAuthenticated = useIsAuthenticated();
   const { instance, accounts } = useMsal();
-  const [hasRole, setHasRole] = useState(false)
+  const [hasRole, setHasRole] = useState(false);
   function requestProfileData() {
     // Silently acquires an access token which is then attached to a request for MS Graph data
     instance
@@ -58,18 +63,21 @@ function App() {
       })
       .then((response) => {
         console.log(response.idTokenClaims);
-        if (response.idTokenClaims.roles && "SeismicDoctors" in response.idTokenClaims.roles) {
-          setHasRole(true)
+        if (
+          response.idTokenClaims.roles &&
+          "SeismicDoctors" in response.idTokenClaims.roles
+        ) {
+          setHasRole(true);
         }
       });
   }
   useEffect(() => {
-    requestProfileData()
+    requestProfileData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAuthenticated])
+  }, [isAuthenticated]);
   return (
     <div className="App">
-      {!hasRole ? <AuthenticatedTemplate>
+      {/* {!hasRole ? <AuthenticatedTemplate>
         <QueryClientProvider client={queryClient}>
           <Router />
           <Toaster />
@@ -82,7 +90,11 @@ function App() {
       <UnauthenticatedTemplate>
         <h5 className="card-title">Please sign-in to see your profile information.</h5>
         <SignInButton />
-      </UnauthenticatedTemplate>
+      </UnauthenticatedTemplate> */}
+      <QueryClientProvider client={queryClient}>
+        <Router />
+        <Toaster />
+      </QueryClientProvider>
     </div>
   );
 }
