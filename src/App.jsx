@@ -12,16 +12,12 @@ import Reports from "./Pages/Reports";
 import Settings from "./Pages/Settings";
 import NotFound from "./Pages/not-found";
 import VideoRecorder from "./Pages/VideoRecorder";
-import {
-  AuthenticatedTemplate,
-  UnauthenticatedTemplate,
-  useIsAuthenticated,
-  useMsal,
-} from "@azure/msal-react";
+import { AuthenticatedTemplate, UnauthenticatedTemplate, useIsAuthenticated, useMsal } from "@azure/msal-react";
 import { SignInButton } from "./components/SignInButton";
 import { useEffect, useState } from "react";
 import { loginRequest } from "./authConfig";
-import StreamVideoCore from "./components/StreamVideoCore";
+// import StreamVideoCore from "./components/StreamVideoCore";
+import StreamVideoCoreV2 from "./components/StreamVideoCoreV2";
 
 function Router() {
   const queryParams = new URLSearchParams(window.location.search);
@@ -41,7 +37,8 @@ function Router() {
             <Route path="/reports" component={Reports} />
             <Route path="/settings" component={Settings} />
             {/* <Route path="/meeting-room" component={VideoCore} /> */}
-            <Route path="/meeting-room" component={StreamVideoCore} />
+            {/* <Route path="/meeting-room" component={StreamVideoCore} /> */}
+            <Route path="/meeting-room" component={StreamVideoCoreV2} />
             <Route component={NotFound} />
           </Switch>
         </main>
@@ -53,7 +50,7 @@ function Router() {
 function App() {
   const isAuthenticated = useIsAuthenticated();
   const { instance, accounts } = useMsal();
-  const [hasRole, setHasRole] = useState(false);
+  const [hasRole, setHasRole] = useState(false)
   function requestProfileData() {
     // Silently acquires an access token which is then attached to a request for MS Graph data
     instance
@@ -63,21 +60,18 @@ function App() {
       })
       .then((response) => {
         console.log(response.idTokenClaims);
-        if (
-          response.idTokenClaims.roles &&
-          "SeismicDoctors" in response.idTokenClaims.roles
-        ) {
-          setHasRole(true);
+        if (response.idTokenClaims.roles && "SeismicDoctors" in response.idTokenClaims.roles) {
+          setHasRole(true)
         }
       });
   }
   useEffect(() => {
-    requestProfileData();
+    requestProfileData()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAuthenticated]);
+  }, [isAuthenticated])
   return (
     <div className="App">
-      {/* {!hasRole ? <AuthenticatedTemplate>
+      {!hasRole ? <AuthenticatedTemplate>
         <QueryClientProvider client={queryClient}>
           <Router />
           <Toaster />
@@ -90,11 +84,7 @@ function App() {
       <UnauthenticatedTemplate>
         <h5 className="card-title">Please sign-in to see your profile information.</h5>
         <SignInButton />
-      </UnauthenticatedTemplate> */}
-      <QueryClientProvider client={queryClient}>
-        <Router />
-        <Toaster />
-      </QueryClientProvider>
+      </UnauthenticatedTemplate>
     </div>
   );
 }
