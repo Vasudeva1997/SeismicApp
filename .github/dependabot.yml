@@ -23,7 +23,6 @@ updates:
     # Ignore all major and minor version updates (only allow patches and other non-major/minor updates)
     allow:
       - dependency-name: "@azure/msal-browser"
-        update-types: "all"
     ignore:
       - dependency-name: "*"
         update-types:
